@@ -50,3 +50,7 @@ export GOOS=darwin
 export GOARCH=amd64
 mkdir -p "${build_dir}/${GOOS}/x86_64"
 "${go_build[@]}" -o "${build_dir}/${GOOS}/x86_64/${plugin_name}" . || exit 1
+export GOOS=windows
+export GOARCH=amd64
+mkdir -p "${build_dir}/${GOOS}/x86_64"
+"${go_build[@]}" -o "${build_dir}/${GOOS}/x86_64/${plugin_name}.exe" . || exit 1
