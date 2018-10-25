@@ -14,7 +14,7 @@
         /solarwinds/dpa/aggregate: 
           schedule: "10 * * * * ?"
           wait: "type|user|machine|sql|app"
-          textForHash: "true"
+          textForHash: "false"
         /solarwinds/dpa/register:
           dbid: "6"
           name: "DEV-AUS-TONY-30"
