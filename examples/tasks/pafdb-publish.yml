@@ -1,0 +1,39 @@
+---
+  version: 1
+  schedule:
+    type: "streaming"
+  max-failures: 10
+  workflow:
+    collect:
+      metrics:
+        /solarwinds/dpa/*/sql/*: {}
+        /solarwinds/dpa/*/wait: {}
+        /solarwinds/dpa/register: {}
+        /solarwinds/dpa/aggregate: {}
+      config: 
+        /solarwinds/dpa/aggregate: 
+          schedule: "10 * * * * ?"
+          wait: "type|user|machine|sql|app"
+          textForHash: "true"
+        /solarwinds/dpa/register:
+          dbid: "6"
+          name: "DEV-AUS-TONY-30"
+          host: "dev-aus-tony-30.swdev.local"
+          machineName: "DEV-AUS-TONY-30"
+          instanceName: "DEV-AUS-TONY-30"
+          securityModel": "MIXED"
+          databaseTypeString: "SQL Server"
+          versionString: "12.0.4232.0"
+          port: "1433"
+          userName: "dpa"
+          password: "Confio123"
+          editionString: "Enterprise Edition (64-bit)"
+      publish:
+        - plugin_name: "pafdb"
+          config:
+             host: "10.199.76.64"
+             port: 1433
+             database: "Counters"
+             user: "sa"
+             password: "Confio123"
+             log-level: "debug"
