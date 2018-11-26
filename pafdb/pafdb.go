@@ -1,22 +1,3 @@
-/*
-http://www.apache.org/licenses/LICENSE-2.0.txt
-
-
-Copyright 2016 Intel Corporation
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package pafdb
 
 import (
@@ -24,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/denisenkom/go-mssqldb"
 
@@ -58,7 +40,7 @@ type PafDbPublisher struct {
 
 type configuration struct {
 	host, database, user, password, logLevel string
-	port                                     int64
+	port, testRun                            int64
 }
 
 func getConfig(config plugin.Config) (configuration, error) {
@@ -95,9 +77,15 @@ func getConfig(config plugin.Config) (configuration, error) {
 		return cfg, fmt.Errorf("%s: %s", err, "port")
 	}
 
+	cfg.testRun, err = config.GetInt("test-run")
+	if err != nil {
+		return cfg, fmt.Errorf("%s: %s", err, "test-run")
+	}
+
 	return cfg, nil
 }
 
+// GetConfigPolicy -
 func (pp *PafDbPublisher) GetConfigPolicy() (plugin.ConfigPolicy, error) {
 	policy := plugin.NewConfigPolicy()
 
@@ -106,6 +94,7 @@ func (pp *PafDbPublisher) GetConfigPolicy() (plugin.ConfigPolicy, error) {
 	policy.AddNewStringRule([]string{""}, "database", true)
 	policy.AddNewStringRule([]string{""}, "user", true)
 	policy.AddNewStringRule([]string{""}, "password", true)
+	policy.AddNewIntRule([]string{""}, "test-run", true)
 
 	return *policy, nil
 }
@@ -137,40 +126,63 @@ func (pp *PafDbPublisher) Publish(metrics []plugin.Metric, pluginConfig plugin.C
 		log.Fatal(err)
 	}
 
-	stmt, err := txn.Prepare(mssql.CopyIn("dpa_sql", mssql.BulkOptions{}, "hash", "sql"))
+	textStmt, err := txn.Prepare(mssql.CopyIn("dpa_sql", mssql.BulkOptions{}, "hash", "sql"))
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	waitStmt, err := txn.Prepare(mssql.CopyIn("dpa_wait", mssql.BulkOptions{}, "test_run_id", "hash", "type", "event_date", "value"))
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
 	for _, m := range metrics {
 		logger.Infof("metric namespace %s", m.Namespace.String())
-		if strings.HasSuffix(m.Namespace.String(), "/sql/text") {
+		if strings.HasSuffix(m.Namespace.String(), "/sql") {
 			hash := m.Tags["hash"]
-			sql := m.Data.(string)
-			_, err = stmt.Exec(hash, sql)
+			sql := m.Tags["text"]
+			_, err = textStmt.Exec(hash, sql)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Info(err.Error())
+			}
+		} else if strings.HasSuffix(m.Namespace.String(), "/wait") {
+			hash := m.Tags["hash"]
+			if hash == "" {
+				hash = m.Tags["sql"]
+			}
+			wait := m.Tags["type"]
+			value := m.Data.(int32)
+			_, err = waitStmt.Exec(config.testRun, hash, wait, time.Now(), value)
+			if err != nil {
+				log.Info(err.Error())
 			}
 		}
 	}
 
-	result, err := stmt.Exec()
+	_, err = textStmt.Exec()
 	if err != nil {
-		log.Fatal(err)
+		log.Info(err)
 	}
 
-	err = stmt.Close()
+	err = textStmt.Close()
 	if err != nil {
-		log.Fatal(err)
+		log.Info(err)
+	}
+
+	_, err = waitStmt.Exec()
+	if err != nil {
+		log.Info(err)
+	}
+
+	err = waitStmt.Close()
+	if err != nil {
+		log.Info(err)
 	}
 
 	err = txn.Commit()
 	if err != nil {
-		log.Fatal(err)
+		log.Info(err)
 	}
-	rowCount, _ := result.RowsAffected()
-	log.Printf("%d row copied\n", rowCount)
-	log.Printf("bye\n")
 
 	return nil
 }
